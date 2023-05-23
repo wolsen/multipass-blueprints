@@ -1,0 +1,89 @@
+# This blueprint creates a quick and simple Sunbeam environment ready to launch and build
+# an OpenStack cluster.
+#
+# After logging in, you'll be ready to bootstrap the sunbeam cluster by running:
+#  > sunbeam cluster bootstrap
+
+
+description: A single node OpenStack Sunbeam installation.
+version: latest
+
+runs-on:
+- x86_64
+
+instances:
+  charm-dev:
+    image: 22.04
+    limits:
+      min-cpu: 4
+      min-mem: 8G
+      min-disk: 30G
+    timeout: 1200
+    cloud-init:
+      vendor-data: |
+        package_update: true
+
+        #packages:
+        #- python3-pip
+        #- jq
+        #- sysstat
+        #- zsh
+        #- fzf
+        #- tox
+        #- gnome-keyring
+        #- kitty-terminfo
+
+        snap:
+          commands:
+          - snap install openstack --channel yoga/edge
+          - snap alias openstack.sunbeam sunbeam
+          #- snap install --classic microk8s
+          #- snap alias microk8s.kubectl kubectl
+          #- snap alias microk8s.kubectl k
+          #- snap install --classic charmcraft
+          #- snap install yq
+          - snap refresh
+
+        runcmd:
+        - DEBIAN_FRONTEND=noninteractive apt -y upgrade
+
+        - |
+          # disable swap
+          sysctl -w vm.swappiness=0
+          echo "vm.swappiness = 0" | tee -a /etc/sysctl.conf
+          swapoff -a
+
+        - |
+          # disable unnecessary services
+          systemctl disable man-db.timer man-db.service --now
+          systemctl disable apport.service apport-autoreport.service  --now
+          systemctl disable apt-daily.service apt-daily.timer --now
+          systemctl disable apt-daily-upgrade.service apt-daily-upgrade.timer --now
+          systemctl disable unattended-upgrades.service --now
+          systemctl disable motd-news.service motd-news.timer --now
+          systemctl disable bluetooth.target --now
+          systemctl disable ua-messaging.service ua-messaging.timer --now
+          systemctl disable ua-timer.timer ua-timer.service --now
+          systemctl disable systemd-tmpfiles-clean.timer --now
+
+        - |
+          # apt cleanup
+          apt remove -y landscape-client landscape-common
+          apt-get autoremove -y
+
+        - |
+          # setup charmcraft
+          lxd init --auto
+          adduser ubuntu lxd
+
+        - |
+          # setup sunbeam and prepared node
+          sunbeam prepare-node-script | bash -x
+
+        final_message: "The system is finally up, after $UPTIME seconds"
+
+health-check: |
+  set -e
+
+  sunbeam inspect
+
